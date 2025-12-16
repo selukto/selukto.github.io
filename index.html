@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kontors Pingis Turnering</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f5f7fa;
+    margin: 0;
+    padding: 12px;
+  }
+  h1 { font-size: 1.4rem; text-align: center; }
+  h2 { font-size: 1.1rem; }
+  .container {
+    max-width: 1200px;
+    margin: auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  }
+  input, select, button {
+    padding: 10px;
+    margin: 6px 0;
+    width: 100%;
+    font-size: 1rem;
+    box-sizing: border-box;
+  }
+  button {
+    background: #007bff;
+    border: none;
+    color: white;
+    cursor: pointer;
+    border-radius: 10px;
+    font-weight: bold;
+  }
+  button.danger { background: #dc3545; }
+  button.secondary { background: #6c757d; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 0.85rem;
+  }
+  th, td {
+    padding: 6px;
+    border-bottom: 1px solid #ddd;
+    text-align: center;
+    white-space: normal;
+  }
+  th { background: #f0f0f0; }
+  @media (min-width: 768px) {
+    h1 { font-size: 1.8rem; }
+    table { font-size: 0.95rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🏓 Kontors Pingis Turnering</h1>
+
+<div class="container">
+
+  <div class="card">
+    <h2>Lägg till spelare</h2>
+    <input type="text" id="playerName" placeholder="Spelarnamn">
+    <button onclick="addPlayer()">Lägg till spelare</button>
+  </div>
+
+  <div class="card">
+    <h2>Lägg till matchresultat</h2>
+    <select id="playerA"></select>
+    <select id="playerB"></select>
+    <input type="number" id="scoreA" placeholder="Poäng spelare A">
+    <input type="number" id="scoreB" placeholder="Poäng spelare B">
+    <button onclick="addMatch()">Spara match</button>
+  </div>
+
+  <div class="card">
+    <h2>Leaderboard</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Spelare</th>
+          <th>Spelade</th>
+          <th>Vinster</th>
+          <th>Förluster</th>
+          <th>Win %</th>
+          <th>Poäng För</th>
+          <th>Poäng Mot</th>
+          <th>+/-</th>
+          <th>Ta bort</th>
+        </tr>
+      </thead>
+      <tbody id="leaderboard"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Matchhistorik</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Spelare A</th>
+          <th>Poäng</th>
+          <th>Spelare B</th>
+          <th>Ta bort</th>
+        </tr>
+      </thead>
+      <tbody id="matchHistory"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+let players = [];
+let matches = [];
+
+// API URL - byt ut med ditt web app URL
+const API_URL = "https://script.google.com/macros/s/AKfycbyB7FQ--DQ6GM6XNS9b6927VvjcMiMI17KNEJrhd3ZCO1xaBJqFHJDnasOBhEz21UlcPQ/exec";
+
+// Hämta data från Google Sheets
+function fetchData() {
+  fetch(API_URL)
+    .then(res => res.json())
+    .then(data => {
+      players = data.players.map(row => ({
+        name: row[0],
+        played: row[1],
+        wins: row[2],
+        losses: row[3],
+        pf: row[4],
+        pa: row[5]
+      }));
+      matches = data.matches.map(row => ({
+        a: row[0],
+        b: row[1],
+        sa: row[2],
+        sb: row[3]
+      }));
+      refresh();
+    });
+}
+
+// Lägg till spelare
+function addPlayer() {
+  const name = playerName.value.trim();
+  if(!name) return;
+
+  fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify({ type: 'addPlayer', name }),
+    headers: { 'Content-Type': 'application/json' }
+  })
+  .then(res => res.json())
+  .then(() => {
+    playerName.value = '';
+    fetchData();
+  });
+}
+
+// Lägg till match
+function addMatch() {
+  const a = playerA.value;
+  const b = playerB.value;
+  const sa = +scoreA.value;
+  const sb = +scoreB.value;
+  if(!a || !b || a===b || isNaN(sa) || isNaN(sb)) return;
+
+  fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify({ type: 'addMatch', a, b, sa, sb }),
+    headers: { 'Content-Type': 'application/json' }
+  })
+  .then(res => res.json())
+  .then(() => {
+    scoreA.value = scoreB.value = '';
+    fetchData();
+  });
+}
+
+// Uppdatera leaderboard
+function updateLeaderboard() {
+  const tbody = document.getElementById('leaderboard');
+  tbody.innerHTML = '';
+  const sorted = [...players].sort((a,b) => b.wins - a.wins || (b.pf - b.pa) - (a.pf - a.pa));
+  sorted.forEach((p,i) => {
+    const winPct = p.played ? ((p.wins/p.played)*100).toFixed(1) : '0.0';
+    tbody.innerHTML += `<tr>
+      <td>${i+1}</td>
+      <td>${p.name}</td>
+      <td>${p.played}</td>
+      <td>${p.wins}</td>
+      <td>${p.losses}</td>
+      <td>${winPct}%</td>
+      <td>${p.pf}</td>
+      <td>${p.pa}</td>
+      <td>${p.pf - p.pa}</td>
+      <td><button class='danger' onclick="removePlayer('${p.name}')">✖</button></td>
+    </tr>`;
+  });
+}
+
+// Ta bort spelare (bara lokalt, går att lägga till API om du vill)
+function removePlayer(name) {
+  alert('För närvarande kan spelare inte tas bort via Google Sheets');
+}
+
+// Uppdatera matchhistorik
+function updateMatchHistory() {
+  const tbody = document.getElementById('matchHistory');
+  tbody.innerHTML = '';
+  matches.forEach((m,i) => {
+    tbody.innerHTML += `<tr>
+      <td>${m.a}</td>
+      <td>${m.sa} : ${m.sb}</td>
+      <td>${m.b}</td>
+      <td>✖</td>
+    </tr>`;
+  });
+}
+
+// Uppdatera dropdowns
+function updateSelectors() {
+  [playerA, playerB].forEach(sel => {
+    sel.innerHTML = '';
+    players.forEach(p => sel.add(new Option(p.name, p.name)));
+  });
+}
+
+// Refresh UI
+function refresh() {
+  updateSelectors();
+  updateLeaderboard();
+  updateMatchHistory();
+}
+
+// Starta sidan
+fetchData();
+</script>
+
+</body>
+</html>
