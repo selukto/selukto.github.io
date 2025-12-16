@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kontors Pingis Turnering</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f5f7fa;
+    margin: 0;
+    padding: 12px;
+  }
+  h1 { font-size: 1.4rem; text-align: center; margin-bottom: 12px; }
+  h2 { font-size: 1.1rem; margin-bottom: 6px; }
+  .container {
+    display: grid;
+    grid-template-columns: 1fr; /* staplat på mobil */
+    gap: 12px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  }
+  input, select, button {
+    padding: 10px;
+    margin: 6px 0;
+    width: 100%;
+    font-size: 1rem;
+    box-sizing: border-box;
+  }
+  button {
+    background: #007bff;
+    border: none;
+    color: white;
+    cursor: pointer;
+    border-radius: 10px;
+    font-weight: bold;
+  }
+  button.danger { background: #dc3545; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 0.85rem;
+  }
+  th, td {
+    padding: 6px;
+    border-bottom: 1px solid #ddd;
+    text-align: center;
+    white-space: normal;
+  }
+  th { background: #f0f0f0; }
+  @media (min-width: 768px) {
+    .container { grid-template-columns: 1fr 1fr; }
+    h1 { font-size: 1.8rem; }
+    table { font-size: 0.95rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🏓 Kontors Pingis Turnering</h1>
+
+<div class="container">
+
+  <div class="card">
+    <h2>Lägg till spelare</h2>
+    <input type="text" id="playerName" placeholder="Spelarnamn">
+    <button onclick="addPlayer()">Lägg till spelare</button>
+  </div>
+
+  <div class="card">
+    <h2>Lägg till matchresultat</h2>
+    <select id="playerA"></select>
+    <select id="playerB"></select>
+    <input type="number" id="scoreA" placeholder="Poäng spelare A">
+    <input type="number" id="scoreB" placeholder="Poäng spelare B">
+    <button onclick="addMatch()">Spara match</button>
+  </div>
+
+  <div class="card">
+    <h2>Leaderboard</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Spelare</th>
+          <th>Spelade</th>
+          <th>Vinster</th>
+          <th>Förluster</th>
+          <th>Win %</th>
+          <th>Poäng För</th>
+          <th>Poäng Mot</th>
+          <th>+/-</th>
+          <th>Ta bort</th>
+        </tr>
+      </thead>
+      <tbody id="leaderboard"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Matchhistorik</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Spelare A</th>
+          <th>Poäng</th>
+          <th>Spelare B</th>
+          <th>Ta bort</th>
+        </tr>
+      </thead>
+      <tbody id="matchHistory"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+// ===================
+// Firebase-konfiguration
+// ===================
+const firebaseConfig = {
+  apiKey: "AIzaSyA9Psu8SlSWV_SKw0rl0qASX9L099e8nPo",
+  authDomain: "pingistournament.firebaseapp.com",
+  databaseURL: "https://pingistournament-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "pingistournament",
+  storageBucket: "pingistournament.firebasestorage.app",
+  messagingSenderId: "917905536928",
+  appId: "1:917905536928:web:a69d7cf83d6896dd60d6c5"
+};
+
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+let players = {};
+let matches = {};
+
+// ===================
+// Lägg till spelare
+// ===================
+function addPlayer() {
+  const name = document.getElementById('playerName').value.trim();
+  if(!name) return;
+
+  database.ref('players/' + name).set({
+    played: 0,
+    wins: 0,
+    losses: 0,
+    pf: 0,
+    pa: 0
+  });
+
+  document.getElementById('playerName').value = '';
+}
+
+// ===================
+// Lägg till match
+// ===================
+function addMatch() {
+  const a = document.getElementById('playerA').value;
+  const b = document.getElementById('playerB').value;
+  const sa = +document.getElementById('scoreA').value;
+  const sb = +document.getElementById('scoreB').value;
+  if(!a || !b || a===b || isNaN(sa) || isNaN(sb)) return;
+
+  const matchId = database.ref('matches').push().key;
+  database.ref('matches/' + matchId).set({ a, b, sa, sb });
+
+  // Uppdatera statistik
+  const updates = {};
+  updates[`players/${a}/played`] = firebase.database.ServerValue.increment(1);
+  updates[`players/${b}/played`] = firebase.database.ServerValue.increment(1);
+  updates[`players/${a}/pf`] = firebase.database.ServerValue.increment(sa);
+  updates[`players/${a}/pa`] = firebase.database.ServerValue.increment(sb);
+  updates[`players/${b}/pf`] = firebase.database.ServerValue.increment(sb);
+  updates[`players/${b}/pa`] = firebase.database.ServerValue.increment(sa);
+
+  if(sa > sb){
+    updates[`players/${a}/wins`] = firebase.database.ServerValue.increment(1);
+    updates[`players/${b}/losses`] = firebase.database.ServerValue.increment(1);
+  } else {
+    updates[`players/${b}/wins`] = firebase.database.ServerValue.increment(1);
+    updates[`players/${a}/losses`] = firebase.database.ServerValue.increment(1);
+  }
+
+  database.ref().update(updates);
+
+  document.getElementById('scoreA').value = '';
+  document.getElementById('scoreB').value = '';
+}
+
+// ===================
+// Ta bort spelare
+// ===================
+function removePlayer(name) {
+  if(!confirm(`Ta bort spelare ${name}?`)) return;
+  database.ref('players/' + name).remove();
+  // Ta bort alla matcher där spelaren är med
+  database.ref('matches').once('value').then(snapshot => {
+    snapshot.forEach(matchSnap => {
+      const m = matchSnap.val();
+      if(m.a === name || m.b === name) {
+        database.ref('matches/' + matchSnap.key).remove();
+      }
+    });
+  });
+}
+
+// ===================
+// Ta bort match
+// ===================
+function removeMatch(matchId) {
+  if(!confirm("Ta bort denna match?")) return;
+  database.ref('matches/' + matchId).remove();
+  // OBS: kan även uppdatera spelarnas statistik om du vill
+}
+
+// ===================
+// Lyssna på ändringar
+// ===================
+database.ref('players').on('value', snapshot => {
+  players = snapshot.val() || {};
+  refreshLeaderboard();
+  updateSelectors();
+});
+
+database.ref('matches').on('value', snapshot => {
+  matches = snapshot.val() || {};
+  refreshMatchHistory();
+});
+
+// ===================
+// Uppdatera dropdowns
+// ===================
+function updateSelectors() {
+  const selA = document.getElementById('playerA');
+  const selB = document.getElementById('playerB');
+  selA.innerHTML = '';
+  selB.innerHTML = '';
+  Object.keys(players).forEach(name => {
+    const optionA = new Option(name, name);
+    const optionB = new Option(name, name);
+    selA.add(optionA);
+    selB.add(optionB);
+  });
+}
+
+// ===================
+// Refresh Leaderboard
+// ===================
+function refreshLeaderboard() {
+  const tbody = document.getElementById('leaderboard');
+  tbody.innerHTML = '';
+  const playerArray = Object.keys(players).map(name => ({ name, ...players[name] }));
+  playerArray.sort((a,b) => b.wins - a.wins || (b.pf - b.pa) - (a.pf - a.pa));
+  playerArray.forEach((p,i) => {
+    const winPct = p.played ? ((p.wins/p.played)*100).toFixed(1) : '0.0';
+    tbody.innerHTML += `<tr>
+      <td>${i+1}</td>
+      <td>${p.name}</td>
+      <td>${p.played}</td>
+      <td>${p.wins}</td>
+      <td>${p.losses}</td>
+      <td>${winPct}%</td>
+      <td>${p.pf}</td>
+      <td>${p.pa}</td>
+      <td>${p.pf - p.pa}</td>
+      <td><button class="danger" onclick="removePlayer('${p.name}')">✖</button></td>
+    </tr>`;
+  });
+}
+
+// ===================
+// Refresh Match History
+// ===================
+function refreshMatchHistory() {
+  const tbody = document.getElementById('matchHistory');
+  tbody.innerHTML = '';
+  Object.entries(matches).forEach(([id, m]) => {
+    tbody.innerHTML += `<tr>
+      <td>${m.a}</td>
+      <td>${m.sa} : ${m.sb}</td>
+      <td>${m.b}</td>
+      <td><button class="danger" onclick="removeMatch('${id}')">✖</button></td>
+    </tr>`;
+  });
+}
+</script>
+
+</body>
+</html>
